@@ -4,6 +4,7 @@ from datetime import datetime
 import bcrypt
 import pandas as pd
 import plotly.express as px
+import time
 
 def client_query_page():
     st.title('Create a New Query')
@@ -35,6 +36,8 @@ def client_query_page():
             cursor.execute("INSERT INTO queries (user_id, email, mobile, category, heading, description, query_created_time) VALUES (%s, %s, %s, %s, %s, %s, %s)""", (user_id, email, mobile, category, heading, description, datetime.now()))
             conn.commit()
             st.success('Query Submitted Successfully!')
+            time.sleep(2)
+            st.rerun()
 
 
 def client_dashboard_page():
@@ -206,3 +209,5 @@ def client_profile_page():
         conn.commit()
         conn.close()
         st.success("Profile Updated Successfully ✔")
+        time.sleep(2)
+        st.rerun()

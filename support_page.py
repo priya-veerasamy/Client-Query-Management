@@ -5,12 +5,14 @@ from datetime import datetime
 import bcrypt
 import pandas as pd
 import plotly.express as px
+import time
 
 def support_query_page():
-    st.title('Submitted Queries')
+    st.title("Submitted Queries")
 
+    # --- Fetch data ---
     conn, cursor = get_db()
-    cursor.execute('SELECT * FROM queries')
+    cursor.execute("SELECT * FROM queries")
     data = cursor.fetchall()
 
     if not data:
@@ -20,79 +22,74 @@ def support_query_page():
     df = pd.DataFrame(data)
 
     # Convert datetime fields
-    if 'query_created_time' in df.columns:
-        df['query_created_time'] = pd.to_datetime(df['query_created_time'])
-    if 'query_closed_time' in df.columns:
-        df['query_closed_time'] = pd.to_datetime(df['query_closed_time'])
+    for col in ['query_created_time', 'query_closed_time']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col])
 
-    # Filters section
+    # --- Filters ---
     col1, col2 = st.columns([1, 1])
-
     with col1:
-        status_filter = st.radio(
-            "Select Status",
-            ["All", "Open", "Closed"],
-            horizontal=True
-        )
-
+        status_filter = st.radio("Select Status", ["All", "Open", "Closed"], horizontal=True)
     with col2:
         category_options = df['category'].dropna().unique().tolist()
-        selected_category = st.multiselect(
-            "Filter by Category",
-            category_options
-        )
+        selected_category = st.multiselect("Filter by Category", category_options)
 
     # Apply filters
-    table_content = df.copy()
-
-    # Filter by status
-    if status_filter == "Open":
-        table_content = table_content[table_content['status'].str.lower() == 'open']
-    elif status_filter == "Closed":
-        table_content = table_content[table_content['status'].str.lower() == 'closed']
-
-    # Filter by category
+    filtered_df = df.copy()
+    if status_filter != "All":
+        filtered_df = filtered_df[filtered_df['status'].str.lower() == status_filter.lower()]
     if selected_category:
-        table_content = table_content[table_content['category'].isin(selected_category)]
+        filtered_df = filtered_df[filtered_df['category'].isin(selected_category)]
 
-    # Query list table
     st.subheader("Query List")
-    st.dataframe(table_content, use_container_width=True)
+    st.dataframe(filtered_df, use_container_width=True)
 
-    # Close or Open Query
-    colA, colB = st.columns(2)
+    # --- Select a query to view details ---
+    st.subheader("View / Update Query")
+    if filtered_df.empty:
+        st.info("No queries available to select.")
+        return
 
-    # Close Opend Query
-    with colA:
-        open_list = df[df['status'].str.lower() == 'open']['id'].tolist()
-        if open_list:
-            open_q = st.selectbox("Select Query to Close", open_list, key="close_box")
-            if st.button("Close Selected Query"):
+    # Add placeholder option
+    options = ["-- Select a Query --"] + filtered_df['id'].tolist()
+    selected_id = st.selectbox("Select a Query by ID", options)
+
+    if selected_id != "-- Select a Query --":
+        query_row = filtered_df[filtered_df['id'] == selected_id].iloc[0]
+
+        # Display query details
+        st.markdown("**Query Details:**")
+        st.markdown(f"**ID:** {query_row['id']}")
+        st.markdown(f"**Status:** {query_row['status']}")
+        st.markdown(f"**Category:** {query_row.get('category', 'N/A')}")
+        st.markdown(f"**Heading:** {query_row.get('heading', 'N/A')}")
+        st.markdown(f"**Description:** {query_row.get('description', 'N/A')}")
+        st.markdown(f"**Created Time:** {query_row.get('query_created_time', 'N/A')}")
+        st.markdown(f"**Closed Time:** {query_row.get('query_closed_time', 'N/A')}")
+
+
+        # --- Close / Reopen button based on current status ---
+        if query_row['status'].lower() == 'open':
+            if st.button("Close Query"):
                 cursor.execute(
-                    'UPDATE queries SET status=%s, query_closed_time=%s WHERE id=%s',
-                    ('Closed', datetime.now(), open_q)
+                    "UPDATE queries SET status=%s, query_closed_time=%s WHERE id=%s",
+                    ("Closed", datetime.now(), selected_id)
                 )
                 conn.commit()
-                st.success(f'Query {open_q} Closed ✔')
-                st.experimental_rerun()
+                st.success(f"Query {selected_id} Closed ✔")
+                time.sleep(2)
+                st.rerun()
         else:
-            st.info("No open queries available.")
-
-    ## Reopen Closed Query
-    with colB:
-        closed_list = df[df['status'].str.lower() == 'closed']['id'].tolist()
-        if closed_list:
-            close_q = st.selectbox("Select Query to Reopen", closed_list, key="reopen_box")
-            if st.button("Reopen Selected Query"):
+            if st.button("Reopen Query"):
                 cursor.execute(
-                    'UPDATE queries SET status=%s, query_created_time=%s, query_closed_time=%s WHERE id=%s',
-                    ('Open', datetime.now(), None, close_q)
+                    "UPDATE queries SET status=%s, query_created_time=%s, query_closed_time=%s WHERE id=%s",
+                    ("Open", datetime.now(), None, selected_id)
                 )
                 conn.commit()
-                st.success(f'Query {close_q} Reopened ✔')
-                st.experimental_rerun()
-        else:
-            st.info("No closed queries available.")
+                st.success(f"Query {selected_id} Reopened ✔")
+                time.sleep(2)
+                st.rerun()
+
 
 
 def support_dashboard_page():
